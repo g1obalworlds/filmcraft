@@ -27,7 +27,7 @@ impl Fft {
     /// Plan an FFT of size `n`, which must be a power of two in `2..=`[`MAX_LEN`]. FilmCraft never
     /// panics on bad input, so any other size is not rejected with an assertion: it is logged as an
     /// error (it is a bug in the caller, which must check sizes that come from file data first, as
-    /// `sync` and `remix` do) and rounded to the nearest valid size so the allocation stays bounded.
+    /// `sync` and `remix` do) and rounded up to a power of two and clamped into that range so the allocation stays bounded.
     pub fn new(n: usize) -> Fft {
         let planned = n.clamp(2, MAX_LEN).next_power_of_two();
         if planned != n {
