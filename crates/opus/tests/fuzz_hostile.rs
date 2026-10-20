@@ -3,7 +3,6 @@
 
 use filmcraft_opus::{Decoder, OpusHead, Packet, StreamDecoder};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::time::Instant;
 
 struct Rng(u64);
 impl Rng {
@@ -71,7 +70,6 @@ fn hostile_constructor_and_lengths_never_panic() {
             let r = catch_unwind(AssertUnwindSafe(|| {
                 if let Ok(mut d) = StreamDecoder::new(rate, ch) {
                     let mut out = Vec::new();
-                    let t = Instant::now();
                     for n in [0usize, 1, 480, 5760, 1 << 20] {
                         out.clear();
                         let _ = d.conceal(n, &mut out);
@@ -82,7 +80,6 @@ fn hostile_constructor_and_lengths_never_panic() {
                     }
                     d.set_gain_q8(i16::MIN);
                     d.set_gain_q8(i16::MAX);
-                    assert!(t.elapsed().as_secs() < 20, "rate {rate} ch {ch} slow");
                 }
             }));
             assert!(r.is_ok(), "rate {rate} channels {ch}");

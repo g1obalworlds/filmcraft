@@ -1738,6 +1738,7 @@ name = "filmcraft-audio-dsp"
 version = "0.7.2"
 dependencies = [
  "filmcraft-testkit",
+ "log",
 ]
 
 [[package]]

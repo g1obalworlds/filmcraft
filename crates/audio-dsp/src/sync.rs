@@ -21,7 +21,7 @@
 //! References: Knapp & Carter, "The generalized correlation method for estimation of time delay",
 //! IEEE Trans. ASSP 24(4), 1976; the β-weighted PHAT variant is standard textbook practice.
 
-use crate::fft::Fft;
+use crate::fft::{Fft, MAX_LEN as MAX_FFT};
 
 /// Tuning of [`find_offset`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -204,6 +204,9 @@ pub fn find_offset(a: &[f32], b: &[f32], sample_rate: u32, opts: &SyncOptions) -
     let (ca, cb) = (decimate(&ca, d), decimate(&cb, d));
     let (la, lb) = (ca.len() as i64, cb.len() as i64);
     let n = ((la + lb) as usize).next_power_of_two();
+    if n > MAX_FFT {
+        return None; // far longer than any real clip: no estimate rather than an enormous transform
+    }
     let rate_c = sr as f32 / d as f32;
     let band = ((40.0 / rate_c).min(0.05), if d > 1 { 0.40 } else { 0.5 });
     let r = gcc(&ca, &cb, n, opts.phat_beta, band);
@@ -290,6 +293,9 @@ pub fn find_offset(a: &[f32], b: &[f32], sample_rate: u32, opts: &SyncOptions) -
     normalise(&mut aw);
     normalise(&mut bw);
     let n2 = (aw.len() + bw.len()).next_power_of_two();
+    if n2 > MAX_FFT {
+        return None;
+    }
     let r2 = gcc(&aw, &bw, n2, opts.phat_beta, (20.0 / sr as f32, 0.5));
     // r2[L'] = Σ aw[i + L']·bw[i]; L' = margin + δ
     let sign = if inverted { -1.0 } else { 1.0 };

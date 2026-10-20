@@ -18,17 +18,21 @@ pub struct StreamResampler {
     held: Vec<Vec<f32>>,
     /// The output frame the next block is expected to start at (contiguous playback).
     next_out: Option<i64>,
+    /// An absurd rate ratio has already been reported for this stream.
+    reported: bool,
 }
 
 /// Most source frames one block may pull.
 const MAX_PULL: i64 = 1 << 24;
-/// Output frames per internal block of a long request (so ratios up to 256:1 are never capped).
+/// Output frames per internal block of a long request. With `MAX_PULL` this means any ratio up to
+/// 256:1 (`MAX_PULL / BLOCK`; for instance 192 kHz to 750 Hz) works however long the request is; a
+/// shorter request tolerates more. Beyond that the block is silence (see [`StreamResampler::process`]).
 const BLOCK: usize = 1 << 16;
 
 impl StreamResampler {
     /// Rates of zero are treated as 1 Hz rather than dividing by zero.
     pub fn new(from: u32, to: u32) -> Self {
-        Self { from: from.max(1), to: to.max(1), held_start: 0, held: Vec::new(), next_out: None }
+        Self { from: from.max(1), to: to.max(1), held_start: 0, held: Vec::new(), next_out: None, reported: false }
     }
 
     pub fn rates(&self) -> (u32, u32) {
@@ -46,6 +50,10 @@ impl StreamResampler {
     /// Output frames `[out, out + n)`, planar. `pull(start, frames)` returns source frames
     /// `[start, start + frames)`, planar (missing samples read as silence). A block that does not
     /// continue the previous one (a seek) starts the stream afresh.
+    ///
+    /// Rate ratios up to 256:1 always work. A block that would need more than 2^24 source frames
+    /// (corrupt rates such as 4 GHz to 1 Hz) is silence and restarts the stream; this is logged once
+    /// per resampler.
     pub fn process(&mut self, out: i64, n: usize, mut pull: impl FnMut(i64, usize) -> Vec<Vec<f32>>) -> Vec<Vec<f32>> {
         // Long requests run in bounded blocks (continuity is kept by `next_out`), so the pull cap
         // in `block` only trips on absurd rate ratios, never on a legitimate long call.
@@ -85,6 +93,10 @@ impl StreamResampler {
             let want = last.saturating_add(1).saturating_sub(held_end);
             if want > MAX_PULL {
                 // an absurd rate ratio (corrupt rates): silence rather than gigabytes of pulls
+                if !self.reported {
+                    self.reported = true;
+                    log::warn!("resampler {} Hz -> {} Hz: block needs {want} source frames (limit {MAX_PULL}); outputting silence", self.from, self.to);
+                }
                 let channels = self.held.len().max(1);
                 self.held.clear();
                 self.next_out = None;

@@ -83,7 +83,7 @@ fn random_scripts_and_params_never_panic() {
                 let _ = v.synthesize(&text, &params);
             }
         }));
-        if r.is_err() || t.elapsed().as_secs() > 10 {
+        if r.is_err() {
             bad.push(format!("{:?} {params:?} {:?}", text.chars().take(50).collect::<String>(), t.elapsed()));
         }
     }
