@@ -65,12 +65,11 @@ impl StreamResampler {
         while done < n {
             let len = BLOCK.min(n - done);
             let part = self.block(out.saturating_add(done as i64), len, &mut pull);
-            if acc.is_empty() {
-                acc = part;
-            } else {
-                for (a, p) in acc.iter_mut().zip(part) {
-                    a.extend(p);
-                }
+            // a silenced block may report fewer channels than a pulled one: pad so every channel has n frames
+            acc.resize(acc.len().max(part.len()), vec![0.0; done]);
+            for (c, a) in acc.iter_mut().enumerate() {
+                a.extend(part.get(c).into_iter().flatten());
+                a.resize(done + len, 0.0);
             }
             done += len;
         }
@@ -231,5 +230,22 @@ mod tests {
         assert_eq!(b.len(), 1);
         assert!(b[0].iter().all(|x| x.is_finite()));
         assert!(r.process(0, 0, |_, _| Vec::new()).iter().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn a_long_call_keeps_every_channel_when_some_blocks_are_silenced() {
+        // 512:1 silences a full block (2^25 source frames) but not a short one
+        let stereo = |_: i64, k: usize| vec![vec![0.5; k]; 2];
+        let n = BLOCK + 1000;
+        // fresh stream: the silenced first block knows no channel count, the short last block pulls two
+        let b = StreamResampler::new(512_000, 1_000).process(0, n, stereo);
+        assert_eq!(b.len(), 2);
+        assert!(b.iter().all(|c| c.len() == n));
+        // stereo already established, then two silenced blocks in one call
+        let mut r = StreamResampler::new(512_000, 1_000);
+        let _ = r.process(0, 10, stereo);
+        let b = r.process(10, 2 * BLOCK, stereo);
+        assert_eq!(b.len(), 2);
+        assert!(b.iter().all(|c| c.len() == 2 * BLOCK));
     }
 }
